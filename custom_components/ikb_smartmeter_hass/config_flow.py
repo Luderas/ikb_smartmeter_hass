@@ -32,9 +32,7 @@ from .const import (
     CONF_SERIAL_NO,
     DOMAIN,
     OPT_DATA_INTERVAL,
-    OPT_DATA_INTERVAL_DEFAULT,
-    OPT_DATA_INTERVAL_MAX,
-    OPT_DATA_INTERVAL_MIN,
+    OPT_DATA_INTERVAL_VALUE,
     PORT_TYPE_BY_ID,
     PORT_TYPE_TTY,
 )
@@ -72,7 +70,7 @@ def _get_ports_for_type(port_type: str) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Verbindungstest (läuft im Thread-Pool)
+# Verbindungstest
 # ---------------------------------------------------------------------------
 
 def _validate_and_connect(data: dict[str, Any]) -> dict[str, str]:
@@ -90,14 +88,18 @@ def _validate_and_connect(data: dict[str, Any]) -> dict[str, str]:
     com_port = data[CONF_COM_PORT]
     key_hex  = data[CONF_KEY_HEX]
 
-    _LOGGER.debug("Teste Verbindung auf Port=%s", com_port)
-    adapter      = Smartmeter(com_port, key_hex)
-    obisdata     = adapter.read()
-    device_no    = obisdata.DeviceNumber.value or com_port
-    return {
-        "title":         f"IKB Smart Meter '{device_no}'",
-        "device_number": device_no,
-    }
+    _LOGGER.debug("Validating connection on port=%s", com_port)
+    try:
+        adapter   = Smartmeter(com_port, key_hex)
+        obisdata  = adapter.read()
+        device_no = obisdata.DeviceNumber.value or com_port
+        return {
+            "title":         f"Smart Meter '{device_no}'",
+            "device_number": device_no,
+        }
+    except SmartmeterException as exc:
+        _LOGGER.warning("Could not connect to device=%s: %s", com_port, exc)
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -125,17 +127,17 @@ class SmartmeterConfigFlow(ConfigFlow, domain=DOMAIN):
             self._port_type = user_input[CONF_PORT_TYPE]
             return await self.async_step_port()
 
-        return self.async_show_form(
-            step_id="user",
-            data_schema=vol.Schema({
+        schema = vol.Schema(
+            {
                 vol.Required(CONF_PORT_TYPE, default=PORT_TYPE_BY_ID): SelectSelector(
                     SelectSelectorConfig(
                         options=[PORT_TYPE_BY_ID, PORT_TYPE_TTY],
                         mode=SelectSelectorMode.DROPDOWN,
                     )
                 ),
-            }),
+            }
         )
+        return self.async_show_form(step_id="user", data_schema=schema)
 
     # ------------------------------------------------------------------
     # Schritt 2 – Port und Schlüssel eingeben
@@ -144,8 +146,8 @@ class SmartmeterConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_port(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Zweiter Schritt: Port auswählen und AES-128-Schlüssel eingeben."""
-        # Ports im Thread-Pool scannen (blockierender Syscall)
+        """Second screen: select port + enter key."""
+        # Scan ports (executor so we don't block the event loop)
         self._ports_list = await self.hass.async_add_executor_job(
             _get_ports_for_type, self._port_type
         )
@@ -165,71 +167,74 @@ class SmartmeterConfigFlow(ConfigFlow, domain=DOMAIN):
                     user_input.get(CONF_COM_PORT),
                 )
                 return self.async_abort(reason="cannot_connect")
+            else:
+                device_unique_id = info["device_number"]
+                await self.async_set_unique_id(device_unique_id)
+                self._abort_if_unique_id_configured()
 
-            device_unique_id = info["device_number"]
-            await self.async_set_unique_id(device_unique_id)
-            self._abort_if_unique_id_configured()
+                return self.async_create_entry(
+                    title=info["title"],
+                    data={
+                        CONF_COM_PORT:  user_input[CONF_COM_PORT],
+                        CONF_KEY_HEX:   user_input[CONF_KEY_HEX],
+                        CONF_SERIAL_NO: device_unique_id,
+                    },
+                )
 
-            return self.async_create_entry(
-                title=info["title"],
-                data={
-                    CONF_COM_PORT:  user_input[CONF_COM_PORT],
-                    CONF_KEY_HEX:   user_input[CONF_KEY_HEX],
-                    CONF_SERIAL_NO: device_unique_id,
-                },
-            )
-
-        return self.async_show_form(
-            step_id="port",
-            data_schema=vol.Schema({
-                vol.Required(CONF_COM_PORT, default=self._ports_list[0]): SelectSelector(
+        default_port = self._ports_list[0]
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_COM_PORT, default=default_port): SelectSelector(
                     SelectSelectorConfig(
                         options=self._ports_list,
                         mode=SelectSelectorMode.DROPDOWN,
                     )
                 ),
                 vol.Required(CONF_KEY_HEX): str,
-            }),
-            errors=errors,
+            }
+        )
+        return self.async_show_form(
+            step_id="port", data_schema=schema, errors=errors
         )
 
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: ConfigEntry) -> "SmartMeterOptionsFlowHandler":
-        """Gibt den Options-Flow-Handler zurück."""
+        """Get the options flow for this handler."""
         return SmartMeterOptionsFlowHandler()
 
 
 # ---------------------------------------------------------------------------
-# Options Flow – Update-Intervall konfigurieren
+# Options flow (update interval)
 # ---------------------------------------------------------------------------
 
 class SmartMeterOptionsFlowHandler(OptionsFlow):
-    """Options-Flow: Update-Intervall in Sekunden einstellen."""
+    """Configurable options for the smart meter."""
 
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Zeigt das Options-Formular und validiert die Eingabe."""
-        errors: dict[str, str] = {}
+    async def async_step_init(self, user_input=None) -> ConfigFlowResult:
+        """Manage the options."""
+        _errors: dict[str, str] = {}
 
         if user_input is not None:
-            interval = user_input.get(OPT_DATA_INTERVAL)
+            interval = user_input[OPT_DATA_INTERVAL]
             if interval is None:
-                errors["base"] = "data_interval_empty"
-            elif not OPT_DATA_INTERVAL_MIN <= interval <= OPT_DATA_INTERVAL_MAX:
-                errors["base"] = "data_interval_wrong"
+                _errors["base"] = "data_interval_empty"
+            elif not 5 <= interval <= 3600:
+                _errors["base"] = "data_interval_wrong"
             else:
                 return self.async_create_entry(title="", data=user_input)
 
-        current_interval = self.config_entry.options.get(
-            OPT_DATA_INTERVAL, OPT_DATA_INTERVAL_DEFAULT
-        )
-
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema({
-                vol.Optional(OPT_DATA_INTERVAL, default=current_interval): int,
-            }),
-            errors=errors,
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        OPT_DATA_INTERVAL,
+                        default=self.config_entry.options.get(
+                            OPT_DATA_INTERVAL, OPT_DATA_INTERVAL_VALUE
+                        ),
+                    ): int,
+                }
+            ),
+            errors=_errors,
         )
