@@ -1,17 +1,9 @@
-"""Config Flow für die IKB Smart Meter Integration (Kaifa MA309).
-
-Zweistufiger Einrichtungsassistent:
-    Schritt 1 (user):  Port-Typ wählen (by-id oder ttyUSB/ttyACM)
-    Schritt 2 (port):  Konkreten Port auswählen + AES-128-Schlüssel eingeben
-
-Options Flow:
-    Update-Intervall in Sekunden konfigurieren (5–3600 s)
-"""
-
+"""Config flow for Smart Meter Austria (IKB / Kaifa MA309)."""
 from __future__ import annotations
 
 import glob
 import logging
+import os
 from typing import Any
 
 import serial.tools.list_ports
@@ -32,9 +24,7 @@ from .const import (
     CONF_SERIAL_NO,
     DOMAIN,
     OPT_DATA_INTERVAL,
-    OPT_DATA_INTERVAL_DEFAULT,
-    OPT_DATA_INTERVAL_MAX,
-    OPT_DATA_INTERVAL_MIN,
+    OPT_DATA_INTERVAL_VALUE,
     PORT_TYPE_BY_ID,
     PORT_TYPE_TTY,
 )
@@ -45,114 +35,114 @@ _LOGGER = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Port-Scan-Hilfsfunktionen (laufen im Thread-Pool, nicht im Event-Loop)
+# Port scanning helpers
 # ---------------------------------------------------------------------------
 
 def _get_by_id_ports() -> list[str]:
-    """Gibt alle Einträge unter /dev/serial/by-id/ zurück (stabile Symlinks)."""
-    return sorted(glob.glob("/dev/serial/by-id/*"))
+    """Return all entries under /dev/serial/by-id/."""
+    paths = sorted(glob.glob("/dev/serial/by-id/*"))
+    return paths if paths else []
 
 
 def _get_tty_ports() -> list[str]:
-    """Gibt ttyUSB*- und ttyACM*-Geräte zurück (via pyserial, Fallback: glob)."""
+    """Return ttyUSB* and ttyACM* devices detected by pyserial."""
     ports = serial.tools.list_ports.comports(include_links=True)
     result = sorted(
         p.device for p in ports
         if "ttyUSB" in p.device or "ttyACM" in p.device
     )
+    # Fall back to a glob scan if pyserial returns nothing
     if not result:
-        # Fallback, falls pyserial keine Ergebnisse liefert
-        result = sorted(glob.glob("/dev/ttyUSB*") + glob.glob("/dev/ttyACM*"))
+        result = sorted(
+            glob.glob("/dev/ttyUSB*") + glob.glob("/dev/ttyACM*")
+        )
     return result
 
 
 def _get_ports_for_type(port_type: str) -> list[str]:
-    """Gibt die passende Port-Liste für den gewählten Port-Typ zurück."""
-    return _get_by_id_ports() if port_type == PORT_TYPE_BY_ID else _get_tty_ports()
+    """Return the appropriate port list for the chosen type."""
+    if port_type == PORT_TYPE_BY_ID:
+        return _get_by_id_ports()
+    return _get_tty_ports()
 
 
 # ---------------------------------------------------------------------------
-# Verbindungstest (läuft im Thread-Pool)
+# Validation helper
 # ---------------------------------------------------------------------------
 
 def _validate_and_connect(data: dict[str, Any]) -> dict[str, str]:
-    """Testet die Verbindung zum Zähler und liest die Gerätenummer aus.
-
-    Args:
-        data: Dict mit CONF_COM_PORT und CONF_KEY_HEX
-
-    Returns:
-        Dict mit 'title' und 'device_number'
-
-    Raises:
-        SmartmeterException: Wenn keine Verbindung hergestellt werden kann.
-    """
+    """Try to connect and read one frame; return title/device_number."""
     com_port = data[CONF_COM_PORT]
     key_hex  = data[CONF_KEY_HEX]
 
-    _LOGGER.debug("Teste Verbindung auf Port=%s", com_port)
-    adapter      = Smartmeter(com_port, key_hex)
-    obisdata     = adapter.read()
-    device_no    = obisdata.DeviceNumber.value or com_port
-    return {
-        "title":         f"IKB Smart Meter '{device_no}'",
-        "device_number": device_no,
-    }
+    _LOGGER.debug("Validating connection on port=%s", com_port)
+    try:
+        adapter   = Smartmeter(com_port, key_hex)
+        obisdata  = adapter.read()
+        device_no = obisdata.DeviceNumber.value or com_port
+        return {
+            "title":         f"Smart Meter '{device_no}'",
+            "device_number": device_no,
+        }
+    except SmartmeterException as exc:
+        _LOGGER.warning("Could not connect to device=%s: %s", com_port, exc)
+        raise
 
 
 # ---------------------------------------------------------------------------
-# Config Flow
+# Config flow
 # ---------------------------------------------------------------------------
 
 class SmartmeterConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Zweistufiger Einrichtungsassistent für den IKB Smart Meter."""
+    """Handle a config flow for the smart meter."""
 
     VERSION = 1
 
     def __init__(self) -> None:
-        self._port_type: str | None  = None
-        self._ports_list: list[str]  = []
+        """Initialise."""
+        self._port_type: str | None = None
+        self._ports_list: list[str] = []
 
     # ------------------------------------------------------------------
-    # Schritt 1 – Port-Typ wählen
+    # Step 1 – choose port type (by-id or ttyUSB)
     # ------------------------------------------------------------------
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Erster Schritt: Auswahl des Port-Typs."""
+        """First screen: select port type."""
         if user_input is not None:
             self._port_type = user_input[CONF_PORT_TYPE]
             return await self.async_step_port()
 
-        return self.async_show_form(
-            step_id="user",
-            data_schema=vol.Schema({
+        schema = vol.Schema(
+            {
                 vol.Required(CONF_PORT_TYPE, default=PORT_TYPE_BY_ID): SelectSelector(
                     SelectSelectorConfig(
                         options=[PORT_TYPE_BY_ID, PORT_TYPE_TTY],
                         mode=SelectSelectorMode.DROPDOWN,
                     )
                 ),
-            }),
+            }
         )
+        return self.async_show_form(step_id="user", data_schema=schema)
 
     # ------------------------------------------------------------------
-    # Schritt 2 – Port und Schlüssel eingeben
+    # Step 2 – pick a specific port and enter the key
     # ------------------------------------------------------------------
 
     async def async_step_port(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Zweiter Schritt: Port auswählen und AES-128-Schlüssel eingeben."""
-        # Ports im Thread-Pool scannen (blockierender Syscall)
+        """Second screen: select port + enter key."""
+        errors: dict[str, str] = {}
+
+        # Scan ports (executor so we don't block the event loop)
         self._ports_list = await self.hass.async_add_executor_job(
             _get_ports_for_type, self._port_type
         )
         if not self._ports_list:
             return self.async_abort(reason="no_serial_ports")
-
-        errors: dict[str, str] = {}
 
         if user_input is not None:
             try:
@@ -160,76 +150,75 @@ class SmartmeterConfigFlow(ConfigFlow, domain=DOMAIN):
                     _validate_and_connect, user_input
                 )
             except SmartmeterException:
-                _LOGGER.warning(
-                    "Verbindungstest auf Port %s fehlgeschlagen.",
-                    user_input.get(CONF_COM_PORT),
-                )
                 return self.async_abort(reason="cannot_connect")
+            else:
+                device_unique_id = info["device_number"]
+                await self.async_set_unique_id(device_unique_id)
+                self._abort_if_unique_id_configured()
 
-            device_unique_id = info["device_number"]
-            await self.async_set_unique_id(device_unique_id)
-            self._abort_if_unique_id_configured()
+                return self.async_create_entry(
+                    title=info["title"],
+                    data={
+                        CONF_COM_PORT:  user_input[CONF_COM_PORT],
+                        CONF_KEY_HEX:   user_input[CONF_KEY_HEX],
+                        CONF_SERIAL_NO: device_unique_id,
+                    },
+                )
 
-            return self.async_create_entry(
-                title=info["title"],
-                data={
-                    CONF_COM_PORT:  user_input[CONF_COM_PORT],
-                    CONF_KEY_HEX:   user_input[CONF_KEY_HEX],
-                    CONF_SERIAL_NO: device_unique_id,
-                },
-            )
-
-        return self.async_show_form(
-            step_id="port",
-            data_schema=vol.Schema({
-                vol.Required(CONF_COM_PORT, default=self._ports_list[0]): SelectSelector(
+        default_port = self._ports_list[0]
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_COM_PORT, default=default_port): SelectSelector(
                     SelectSelectorConfig(
                         options=self._ports_list,
                         mode=SelectSelectorMode.DROPDOWN,
                     )
                 ),
                 vol.Required(CONF_KEY_HEX): str,
-            }),
-            errors=errors,
+            }
+        )
+        return self.async_show_form(
+            step_id="port", data_schema=schema, errors=errors
         )
 
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: ConfigEntry) -> "SmartMeterOptionsFlowHandler":
-        """Gibt den Options-Flow-Handler zurück."""
+        """Get the options flow for this handler."""
         return SmartMeterOptionsFlowHandler()
 
 
 # ---------------------------------------------------------------------------
-# Options Flow – Update-Intervall konfigurieren
+# Options flow (update interval)
 # ---------------------------------------------------------------------------
 
 class SmartMeterOptionsFlowHandler(OptionsFlow):
-    """Options-Flow: Update-Intervall in Sekunden einstellen."""
+    """Configurable options for the smart meter."""
 
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Zeigt das Options-Formular und validiert die Eingabe."""
-        errors: dict[str, str] = {}
+    async def async_step_init(self, user_input=None) -> ConfigFlowResult:
+        """Manage the options."""
+        _errors: dict[str, str] = {}
 
         if user_input is not None:
-            interval = user_input.get(OPT_DATA_INTERVAL)
+            interval = user_input[OPT_DATA_INTERVAL]
             if interval is None:
-                errors["base"] = "data_interval_empty"
-            elif not OPT_DATA_INTERVAL_MIN <= interval <= OPT_DATA_INTERVAL_MAX:
-                errors["base"] = "data_interval_wrong"
+                _errors["base"] = "data_interval_empty"
+            elif not 5 <= interval <= 3600:
+                _errors["base"] = "data_interval_wrong"
             else:
                 return self.async_create_entry(title="", data=user_input)
 
-        current_interval = self.config_entry.options.get(
-            OPT_DATA_INTERVAL, OPT_DATA_INTERVAL_DEFAULT
-        )
-
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema({
-                vol.Optional(OPT_DATA_INTERVAL, default=current_interval): int,
-            }),
-            errors=errors,
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        OPT_DATA_INTERVAL,
+                        default=self.config_entry.options.get(
+                            OPT_DATA_INTERVAL, OPT_DATA_INTERVAL_VALUE
+                        ),
+                    ): int,
+                }
+            ),
+            errors=_errors,
         )

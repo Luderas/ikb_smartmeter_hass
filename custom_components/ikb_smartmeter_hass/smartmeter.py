@@ -1,8 +1,16 @@
-"""Smartmeter reader for Kaifa MA309 (IKB) – M-Bus single-frame, AES-128-CTR."""
+"""Serielle Kommunikation mit dem Kaifa MA309 (IKB) – M-Bus Single-Frame, AES-128-CTR.
+
+Der Kaifa MA309 sendet alle ~5 Sekunden selbstständig einen vollständigen
+M-Bus Long Frame mit allen Messwerten. Dieser wird hier empfangen,
+gesucht, extrahiert und zur Entschlüsselung weitergegeben.
+"""
+
+from __future__ import annotations
 
 import logging
 import time
 
+import serial
 from serial.serialutil import (
     EIGHTBITS,
     PARITY_NONE,
@@ -10,7 +18,6 @@ from serial.serialutil import (
     SerialException,
     SerialTimeoutException,
 )
-import serial
 
 from .decrypt import Decrypt, MBUS_START, MBUS_STOP
 from .exceptions import (
@@ -22,30 +29,39 @@ from .obisdata import ObisData
 
 _LOGGER = logging.getLogger(__name__)
 
-# Kaifa MA309 sends one self-contained M-Bus Long Frame every ~5 s.
-# Minimum meaningful payload length (inner frame without header/trailer).
-MIN_DATA_LEN = 23
+# Zeitlimit in Sekunden, bis ein vollständiger M-Bus-Frame empfangen sein muss
+_READ_TIMEOUT_S = 15
 
-# How long to wait for a complete frame (seconds)
-READ_TIMEOUT_S = 15
+# Poll-Intervall beim Warten auf neue Bytes vom seriellen Port
+_POLL_INTERVAL_S = 0.05
 
 
 def _find_next_frame(buf: bytearray) -> tuple[int, bytes] | None:
-    """
-    Search *buf* for the next valid M-Bus Long Frame.
-    Returns (start_offset, frame_bytes) or None.
+    """Sucht im Puffer nach dem nächsten gültigen M-Bus Long Frame.
+
+    M-Bus Long Frame-Struktur:
+        68 LL LL 68  …Payload…  CS 16
+
+    Args:
+        buf: Empfangspuffer mit rohen seriellen Daten
+
+    Returns:
+        (start_offset, frame_bytes) wenn ein gültiger Frame gefunden wurde,
+        sonst None.
     """
     limit = len(buf) - 5
     i = 0
     while i < limit:
+        # Prüfe M-Bus Long Frame Starter: 68 LL LL 68
         if (
-            buf[i] == MBUS_START
-            and buf[i + 1] == buf[i + 2]
+            buf[i]     == MBUS_START
+            and buf[i + 1] == buf[i + 2]   # LL == LL (Längenbyte doppelt)
             and buf[i + 3] == MBUS_START
         ):
-            length = buf[i + 1]
-            total  = length + 6   # header(4) + payload(L) + CS(1) + stop(1)
-            end    = i + total
+            length    = buf[i + 1]
+            total_len = length + 6  # 4 Byte Header + LL Byte Payload + CS + 16
+            end       = i + total_len
+
             if end <= len(buf) and buf[end - 1] == MBUS_STOP:
                 return i, bytes(buf[i:end])
         i += 1
@@ -53,32 +69,64 @@ def _find_next_frame(buf: bytearray) -> tuple[int, bytes] | None:
 
 
 class Smartmeter:
-    """Connects to and reads data from a Kaifa MA309 smart meter."""
+    """Liest einen Messrahmen vom Kaifa MA309 über einen seriellen M-Bus-Adapter.
+
+    Verwendung:
+        sm = Smartmeter("/dev/ttyUSB0", "0123456789ABCDEF0123456789ABCDEF")
+        obisdata = sm.read()
+        print(obisdata.VoltageL1.value)
+
+    Das Objekt ist nicht thread-sicher. Für parallele Zugriffe jeweils eine
+    eigene Instanz verwenden.
+    """
 
     def __init__(
         self,
         port: str,
         key_hex_string: str,
-        baudrate: int = 2400,
-        parity: str = PARITY_NONE,
-        stopbits: int = STOPBITS_ONE,
-        bytesize: int = EIGHTBITS,
+        baudrate: int    = 2400,         # Kaifa MA309 kommuniziert mit 2400 Baud
+        parity: str      = PARITY_NONE,
+        stopbits: int    = STOPBITS_ONE,
+        bytesize: int    = EIGHTBITS,
     ) -> None:
-        self._port           = port
-        self._key_hex_string = key_hex_string
-        self._baudrate       = baudrate
-        self._parity         = parity
-        self._stopbits       = stopbits
-        self._bytesize       = bytesize
-        self._my_serial: serial.Serial | None = None
-        self._is_running     = False
+        """Initialisiert den Smartmeter-Reader.
 
-    # ------------------------------------------------------------------
+        Args:
+            port:           Serieller Port, z. B. /dev/ttyUSB0 oder
+                            /dev/serial/by-id/usb-...
+            key_hex_string: AES-128-Schlüssel als 32-stelliger Hex-String
+            baudrate:       Baudrate (Standard: 2400 für Kaifa MA309)
+            parity:         Parität (Standard: keine)
+            stopbits:       Stoppbits (Standard: 1)
+            bytesize:       Datenbits (Standard: 8)
+        """
+        self._port            = port
+        self._key_hex_string  = key_hex_string
+        self._baudrate        = baudrate
+        self._parity          = parity
+        self._stopbits        = stopbits
+        self._bytesize        = bytesize
+        self._serial: serial.Serial | None = None
+        self._is_running      = False
+
+    # -------------------------------------------------------------------------
+    # Öffentliche API
+    # -------------------------------------------------------------------------
 
     def read(self) -> ObisData:
-        """Open the serial port, wait for one complete frame and return ObisData."""
+        """Öffnet den seriellen Port, wartet auf einen vollständigen M-Bus-Frame
+        und gibt die geparsten OBIS-Daten zurück.
+
+        Returns:
+            ObisData-Objekt mit allen vom Zähler gelieferten Messwerten.
+
+        Raises:
+            SmartmeterException:        Bei ungültigem Frame oder laufendem read()
+            SmartmeterSerialException:  Port nicht verfügbar
+            SmartmeterTimeoutException: Kein Frame innerhalb von _READ_TIMEOUT_S
+        """
         if self._is_running:
-            raise SmartmeterException("Smartmeter.read() is already running.")
+            raise SmartmeterException("Smartmeter.read() wird bereits ausgeführt.")
 
         try:
             self._open_serial()
@@ -87,75 +135,85 @@ class Smartmeter:
             buf        = bytearray()
             start_time = time.monotonic()
 
-            _LOGGER.debug("Waiting for M-Bus frame on %s …", self._port)
+            _LOGGER.debug("Warte auf M-Bus-Frame auf %s …", self._port)
 
             while True:
-                if self._my_serial.in_waiting > 0:
-                    buf.extend(self._my_serial.read(self._my_serial.in_waiting))
+                # Verfügbare Bytes in den Puffer lesen
+                if self._serial.in_waiting > 0:
+                    buf.extend(self._serial.read(self._serial.in_waiting))
 
+                # Vollständigen Frame im Puffer suchen
                 result = _find_next_frame(buf)
                 if result is not None:
                     _, frame_bytes = result
-                    _LOGGER.debug("Frame found (%d bytes), decrypting …", len(frame_bytes))
-
+                    _LOGGER.debug(
+                        "M-Bus-Frame empfangen (%d Byte), entschlüssele …",
+                        len(frame_bytes),
+                    )
                     dec = Decrypt(frame_bytes, self._key_hex_string)
                     dec.parse_all()
                     return ObisData(dec)
 
-                elapsed = time.monotonic() - start_time
-                if elapsed > READ_TIMEOUT_S:
+                # Timeout-Prüfung
+                if time.monotonic() - start_time > _READ_TIMEOUT_S:
                     raise SmartmeterTimeoutException(
-                        f"No valid M-Bus frame received within {READ_TIMEOUT_S} s."
+                        f"Kein gültiger M-Bus-Frame innerhalb von {_READ_TIMEOUT_S} s empfangen."
                     )
 
-                time.sleep(0.05)
+                time.sleep(_POLL_INTERVAL_S)
 
         except SmartmeterException:
-            raise
+            raise  # Smartmeter-Ausnahmen direkt weitergeben
         except Exception as exc:
-            raise SmartmeterException(f"Unexpected error in Smartmeter.read(): {exc}") from exc
+            raise SmartmeterException(
+                f"Unerwarteter Fehler in Smartmeter.read(): {exc}"
+            ) from exc
         finally:
             self._is_running = False
             self._close_serial()
 
-    # ------------------------------------------------------------------
-    # Serial helpers
-    # ------------------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # Private Hilfsmethoden
+    # -------------------------------------------------------------------------
 
     def _open_serial(self) -> None:
-        if self._my_serial is not None and self._my_serial.is_open:
-            _LOGGER.debug("Serial port '%s' already open.", self._port)
+        """Öffnet den seriellen Port, falls noch nicht geöffnet."""
+        if self._serial is not None and self._serial.is_open:
+            _LOGGER.debug("Serieller Port '%s' ist bereits geöffnet.", self._port)
             return
+
         try:
             _LOGGER.debug(
-                "Opening serial port '%s' @ %d baud.", self._port, self._baudrate
+                "Öffne seriellen Port '%s' mit %d Baud.", self._port, self._baudrate
             )
-            self._my_serial = serial.Serial(
-                port      = self._port,
-                baudrate  = self._baudrate,
-                parity    = self._parity,
-                stopbits  = self._stopbits,
-                bytesize  = self._bytesize,
-                timeout   = 1,
+            self._serial = serial.Serial(
+                port     = self._port,
+                baudrate = self._baudrate,
+                parity   = self._parity,
+                stopbits = self._stopbits,
+                bytesize = self._bytesize,
+                timeout  = 1,
             )
         except SerialTimeoutException as exc:
             raise SmartmeterTimeoutException(
-                f"Timeout opening port '{self._port}'."
+                f"Timeout beim Öffnen von Port '{self._port}'."
             ) from exc
         except SerialException as exc:
             raise SmartmeterSerialException(
-                f"Unable to open port '{self._port}'."
+                f"Port '{self._port}' konnte nicht geöffnet werden."
             ) from exc
         except Exception as exc:
             raise SmartmeterException(
-                f"Connection to '{self._port}' failed."
+                f"Verbindung zu '{self._port}' fehlgeschlagen."
             ) from exc
 
     def _close_serial(self) -> None:
+        """Schließt den seriellen Port, falls geöffnet."""
         try:
-            if self._my_serial is not None and self._my_serial.is_open:
-                self._my_serial.close()
+            if self._serial is not None and self._serial.is_open:
+                self._serial.close()
+                _LOGGER.debug("Serieller Port '%s' geschlossen.", self._port)
         except Exception as exc:
             raise SmartmeterException(
-                f"Closing port '{self._port}' failed."
+                f"Fehler beim Schließen von Port '{self._port}': {exc}"
             ) from exc

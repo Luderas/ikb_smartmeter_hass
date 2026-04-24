@@ -1,4 +1,4 @@
-"""Defines value objects for OBIS data."""
+"""Wert-Objekte für OBIS-Messdaten."""
 
 import math
 
@@ -6,7 +6,12 @@ from .constants import PhysicalUnits
 
 
 class ObisValueFloat:
-    """Defines value objects for floats."""
+    """Numerischer OBIS-Messwert mit Skalierung und physikalischer Einheit.
+    
+    Der tatsächliche Wert ergibt sich aus:  value = raw_value × 10^scale
+    
+    Beispiel: raw_value=2304, scale=-1  →  value=230.4 V
+    """
 
     def __init__(
         self,
@@ -15,57 +20,71 @@ class ObisValueFloat:
         scale: int = 0,
     ) -> None:
         self._raw_value = raw_value
-        self._scale = scale
-        self._unit = unit
+        self._scale     = scale
+        self._unit      = unit
+
+    # ------------------------------------------------------------------
+    # Arithmetik – nur bei gleicher Einheit sinnvoll
+    # ------------------------------------------------------------------
 
     def __add__(self, other: "ObisValueFloat") -> "ObisValueFloat":
-        if self.unit == other.unit:
-            return ObisValueFloat(self.value + other.value, self.unit)
+        """Addition zweier Werte gleicher Einheit."""
+        if self._unit == other._unit:
+            return ObisValueFloat(self.value + other.value, self._unit)
         return ObisValueFloat(math.nan)
 
     def __sub__(self, other: "ObisValueFloat") -> "ObisValueFloat":
-        if self.unit == other.unit:
-            return ObisValueFloat(self.value - other.value, self.unit)
+        """Subtraktion zweier Werte gleicher Einheit."""
+        if self._unit == other._unit:
+            return ObisValueFloat(self.value - other.value, self._unit)
         return ObisValueFloat(math.nan)
+
+    # ------------------------------------------------------------------
+    # Properties
+    # ------------------------------------------------------------------
 
     @property
     def raw_value(self) -> float:
-        """The unformatted OBIS value."""
+        """Rohwert direkt aus dem M-Bus-Frame (unskaliert)."""
         return self._raw_value
 
     @property
-    def scale(self) -> float:
-        """The scale factor of the OBIS value."""
+    def scale(self) -> int:
+        """Skalierungsexponent (Exponent zur Basis 10)."""
         return self._scale
 
     @property
     def unit(self) -> PhysicalUnits:
-        """The physical unit of the OBIS value."""
+        """Physikalische Einheit des Messwertes."""
         return self._unit
 
     @property
     def value(self) -> float:
-        """The scaled OBIS value."""
-        return self._raw_value * 10 ** self._scale
+        """Skalierter Messwert in der angegebenen Einheit."""
+        return self._raw_value * (10 ** self._scale)
 
     @property
     def value_string(self) -> str:
-        """The OBIS value formatted including unit."""
-        return f"{self.value} {self.unit.name}"
+        """Messwert als formatierter String inkl. Einheit, z. B. '230.4 V'."""
+        return f"{self.value} {self._unit.name}"
 
 
 class ObisValueBytes:
-    """Defines value objects for byte arrays."""
+    """Bytebasierter OBIS-Wert (z. B. Gerätenummer, Zeitstempel).
+    
+    Wird für Felder verwendet, die keine numerischen Messwerte darstellen,
+    sondern Bezeichner oder Zeitangaben als ASCII/Byte-Sequenz liefern.
+    """
 
     def __init__(self, raw_value: bytes) -> None:
         self._raw_value = raw_value
 
     @property
     def raw_value(self) -> bytes:
-        """The unformatted OBIS value."""
+        """Rohbytes direkt aus dem M-Bus-Frame."""
         return self._raw_value
 
     @property
     def value(self) -> str:
-        """The OBIS value decoded as string."""
+        """Decoded ASCII-String, Null-Bytes werden entfernt."""
         return self._raw_value.decode("ascii", errors="replace").strip("\x00")

@@ -1,4 +1,7 @@
-"""Defines a config entry data class."""
+"""Laufzeitdaten eines Config-Entry für den IKB Smart Meter."""
+
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 from homeassistant.config_entries import ConfigEntry
@@ -9,34 +12,18 @@ from .coordinator import SmartmeterDataCoordinator
 
 @dataclass
 class SmartMeterData:
-    """Defines Smart Meter Austria data class."""
+    """Hält alle Laufzeitdaten, die einem Config-Entry zugeordnet sind.
 
-    def __init__(
-        self,
-        coordinator: SmartmeterDataCoordinator,
-        device_info: DeviceInfo,
-        device_number: str,
-    ) -> None:
-        """Initialize."""
-        self._coordinator  = coordinator
-        self._device_info  = device_info
-        self._device_number = device_number
+    Wird in entry.runtime_data gespeichert und von allen Plattformen
+    (Sensor, …) verwendet, um auf Coordinator und Geräteinformationen
+    zuzugreifen.
+    """
 
-    @property
-    def coordinator(self) -> SmartmeterDataCoordinator:
-        """Gets the coordinator."""
-        return self._coordinator
-
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Gets the device info."""
-        return self._device_info
-
-    @property
-    def device_number(self) -> str:
-        """Gets the device number."""
-        return self._device_number
+    coordinator:   SmartmeterDataCoordinator
+    device_info:   DeviceInfo
+    device_number: str
 
 
-# The type alias needs to be suffixed with 'ConfigEntry'
+# Typalias für Config-Entries mit SmartMeterData als Runtime-Daten.
+# Der Suffix 'ConfigEntry' ist HA-Konvention für diesen Typalias.
 type SmartMeterConfigEntry = ConfigEntry[SmartMeterData]

@@ -1,0 +1,44 @@
+{
+    "config": {
+        "abort": {
+            "already_configured": "Device is already configured",
+            "no_serial_ports": "No serial ports found. Need a valid M-BUS to USB device to communicate",
+            "cannot_connect": "Unable to connect, please check serial port and electrical connection"
+        },
+        "error": {
+            "cannot_open_serial_port": "Cannot open serial port, please check and try again",
+            "invalid_serial_port": "Serial port is not a valid device or could not be opened"
+        },
+        "step": {
+            "user": {
+                "title": "Smartmeter – Port type",
+                "description": "Select how the M-BUS to USB adapter appears in the system.",
+                "data": {
+                    "port_type": "Port type"
+                }
+            },
+            "port": {
+                "title": "Smartmeter – Port & Key",
+                "description": "Select the serial port and enter your AES-128 decryption key.",
+                "data": {
+                    "com_port": "USB port",
+                    "key_hex":  "Decryption key (32 hex chars)"
+                }
+            }
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Set update rate in seconds",
+                "data": {
+                    "smartmeter_aut_data_interval": "Update interval [s]"
+                }
+            }
+        },
+        "error": {
+            "data_interval_empty": "Please enter an update rate between 5 and 3600 seconds.",
+            "data_interval_wrong": "Update rate must be between 5 and 3600 seconds."
+        }
+    }
+}

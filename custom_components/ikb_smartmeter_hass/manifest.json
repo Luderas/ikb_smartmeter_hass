@@ -1,20 +1,20 @@
 {
-  "domain": "smartmeter_austria",
-  "name": "Smart Meter Austria",
+  "domain": "ikb_smartmeter_hass",
+  "name": "IKB Smart Meter",
   "codeowners": [
-    "@NECH2004"
+    "@luderas"
   ],
   "config_flow": true,
-  "documentation": "https://github.com/NECH2004/smartmeter_austria",
+  "documentation": "https://github.com/luderas/ikb_smartmeter_hass",
   "integration_type": "device",
   "iot_class": "local_polling",
-  "issue_tracker": "https://github.com/NECH2004/smartmeter_austria/issues",
+  "issue_tracker": "https://github.com/luderas/ikb_smartmeter_hass/issues",
   "loggers": [
-    "smartmeter_austria"
+    "ikb_smartmeter_hass"
   ],
   "requirements": [
     "cryptography>=42.0.0",
     "pyserial>=3.5"
   ],
-  "version": "1.4.11"
+  "version": "0.0.1"
 }
