@@ -1,4 +1,0 @@
-pyserial
-PyCryptodome
-homeassistant>=2025.1.4
-smartmeter_austria_energy==1.4.9

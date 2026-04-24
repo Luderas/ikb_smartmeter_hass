@@ -1,0 +1,20 @@
+{
+  "domain": "ikb_smartmeter_hass",
+  "name": "IKB Smart Meter",
+  "codeowners": [
+    "@luderas"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/luderas/ikb_smartmeter_hass",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/luderas/ikb_smartmeter_hass/issues",
+  "loggers": [
+    "ikb_smartmeter_hass"
+  ],
+  "requirements": [
+    "cryptography>=42.0.0",
+    "pyserial>=3.5"
+  ],
+  "version": "0.0.2"
+}

@@ -1,9 +1,17 @@
-"""Config flow for Smart Meter Austria (IKB / Kaifa MA309)."""
+"""Config Flow für die IKB Smart Meter Integration (Kaifa MA309).
+
+Zweistufiger Einrichtungsassistent:
+    Schritt 1 (user):  Port-Typ wählen (by-id oder ttyUSB/ttyACM)
+    Schritt 2 (port):  Konkreten Port auswählen + AES-128-Schlüssel eingeben
+
+Options Flow:
+    Update-Intervall in Sekunden konfigurieren (5–3600 s)
+"""
+
 from __future__ import annotations
 
 import glob
 import logging
-import os
 from typing import Any
 
 import serial.tools.list_ports
@@ -35,43 +43,48 @@ _LOGGER = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Port scanning helpers
+# Port-Scan-Hilfsfunktionen 
 # ---------------------------------------------------------------------------
 
 def _get_by_id_ports() -> list[str]:
-    """Return all entries under /dev/serial/by-id/."""
-    paths = sorted(glob.glob("/dev/serial/by-id/*"))
-    return paths if paths else []
+    """Gibt alle Einträge unter /dev/serial/by-id/ zurück (stabile Symlinks)."""
+    return sorted(glob.glob("/dev/serial/by-id/*"))
 
 
 def _get_tty_ports() -> list[str]:
-    """Return ttyUSB* and ttyACM* devices detected by pyserial."""
+    """Gibt ttyUSB*- und ttyACM*-Geräte zurück (via pyserial, Fallback: glob)."""
     ports = serial.tools.list_ports.comports(include_links=True)
     result = sorted(
         p.device for p in ports
         if "ttyUSB" in p.device or "ttyACM" in p.device
     )
-    # Fall back to a glob scan if pyserial returns nothing
     if not result:
-        result = sorted(
-            glob.glob("/dev/ttyUSB*") + glob.glob("/dev/ttyACM*")
-        )
+        # Fallback, falls pyserial keine Ergebnisse liefert
+        result = sorted(glob.glob("/dev/ttyUSB*") + glob.glob("/dev/ttyACM*"))
     return result
 
 
 def _get_ports_for_type(port_type: str) -> list[str]:
-    """Return the appropriate port list for the chosen type."""
-    if port_type == PORT_TYPE_BY_ID:
-        return _get_by_id_ports()
-    return _get_tty_ports()
+    """Gibt die passende Port-Liste für den gewählten Port-Typ zurück."""
+    return _get_by_id_ports() if port_type == PORT_TYPE_BY_ID else _get_tty_ports()
 
 
 # ---------------------------------------------------------------------------
-# Validation helper
+# Verbindungstest
 # ---------------------------------------------------------------------------
 
 def _validate_and_connect(data: dict[str, Any]) -> dict[str, str]:
-    """Try to connect and read one frame; return title/device_number."""
+    """Testet die Verbindung zum Zähler und liest die Gerätenummer aus.
+
+    Args:
+        data: Dict mit CONF_COM_PORT und CONF_KEY_HEX
+
+    Returns:
+        Dict mit 'title' und 'device_number'
+
+    Raises:
+        SmartmeterException: Wenn keine Verbindung hergestellt werden kann.
+    """
     com_port = data[CONF_COM_PORT]
     key_hex  = data[CONF_KEY_HEX]
 
@@ -90,27 +103,26 @@ def _validate_and_connect(data: dict[str, Any]) -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# Config flow
+# Config Flow
 # ---------------------------------------------------------------------------
 
 class SmartmeterConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for the smart meter."""
+    """Zweistufiger Einrichtungsassistent für den IKB Smart Meter."""
 
     VERSION = 1
 
     def __init__(self) -> None:
-        """Initialise."""
-        self._port_type: str | None = None
-        self._ports_list: list[str] = []
+        self._port_type: str | None  = None
+        self._ports_list: list[str]  = []
 
     # ------------------------------------------------------------------
-    # Step 1 – choose port type (by-id or ttyUSB)
+    # Schritt 1 – Port-Typ wählen
     # ------------------------------------------------------------------
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """First screen: select port type."""
+        """Erster Schritt: Auswahl des Port-Typs."""
         if user_input is not None:
             self._port_type = user_input[CONF_PORT_TYPE]
             return await self.async_step_port()
@@ -128,7 +140,7 @@ class SmartmeterConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(step_id="user", data_schema=schema)
 
     # ------------------------------------------------------------------
-    # Step 2 – pick a specific port and enter the key
+    # Schritt 2 – Port und Schlüssel eingeben
     # ------------------------------------------------------------------
 
     async def async_step_port(
@@ -150,6 +162,10 @@ class SmartmeterConfigFlow(ConfigFlow, domain=DOMAIN):
                     _validate_and_connect, user_input
                 )
             except SmartmeterException:
+                _LOGGER.warning(
+                    "Verbindungstest auf Port %s fehlgeschlagen.",
+                    user_input.get(CONF_COM_PORT),
+                )
                 return self.async_abort(reason="cannot_connect")
             else:
                 device_unique_id = info["device_number"]

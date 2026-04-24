@@ -14,22 +14,22 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: "Checkout repository"
+      - name: "Checkout the repository"
         uses: "actions/checkout@v4.1.1"
 
-      - name: "Update version in manifest.json"
+      - name: "Adjust version number"
         shell: "bash"
         run: |
           yq -i -o json '.version="${{ github.event.release.tag_name }}"' \
-            "${{ github.workspace }}/custom_components/ikb_smartmeter_hass/manifest.json"
+            "${{ github.workspace }}/custom_components/smartmeter_austria/manifest.json"
 
-      - name: "ZIP integration directory"
+      - name: "ZIP the integration directory"
         shell: "bash"
         run: |
-          cd "${{ github.workspace }}/custom_components/ikb_smartmeter_hass"
-          zip ikb_smartmeter_hass.zip -r ./
+          cd "${{ github.workspace }}/custom_components/smartmeter_austria"
+          zip smartmeter_austria.zip -r ./
 
-      - name: "Upload ZIP to release"
+      - name: "Upload the ZIP file to the release"
         uses: softprops/action-gh-release@v1
         with:
-          files: ${{ github.workspace }}/custom_components/ikb_smartmeter_hass/ikb_smartmeter_hass.zip
+          files: ${{ github.workspace }}/custom_components/smartmeter_austria/smartmeter_austria.zip

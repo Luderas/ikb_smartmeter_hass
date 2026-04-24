@@ -1,44 +1,44 @@
 {
-  "config": {
-    "step": {
-      "user": {
-        "title": "IKB Smart Meter – Port-Typ",
-        "description": "Bitte auswählen, wie der M-BUS-zu-USB-Adapter im System erscheint.",
-        "data": {
-          "port_type": "Port-Typ"
+    "config": {
+        "abort": {
+            "already_configured": "Gerät ist bereits konfiguriert",
+            "no_serial_ports": "Keine seriellen Ports gefunden. Es wird ein gültiger M-BUS zu USB-Adapter benötigt.",
+            "cannot_connect": "Verbindung kann nicht hergestellt werden, bitte seriellen Anschluss und Verkabelung prüfen"
+        },
+        "error": {
+            "cannot_open_serial_port": "Serielle Schnittstelle kann nicht geöffnet werden, bitte prüfen und erneut versuchen",
+            "invalid_serial_port": "Serielle Schnittstelle ist kein gültiges Gerät oder konnte nicht geöffnet werden"
+        },
+        "step": {
+            "user": {
+                "title": "Smartmeter – Port-Typ",
+                "description": "Bitte auswählen, wie der M-BUS zu USB-Adapter im System erscheint.",
+                "data": {
+                    "port_type": "Port-Typ"
+                }
+            },
+            "port": {
+                "title": "Smartmeter – Port & Schlüssel",
+                "description": "Seriellen Port auswählen und AES-128 Entschlüsselungsschlüssel eingeben.",
+                "data": {
+                    "com_port": "USB-Anschluss",
+                    "key_hex":  "Entschlüsselungsschlüssel (32 Hex-Zeichen)"
+                }
+            }
         }
-      },
-      "port": {
-        "title": "IKB Smart Meter – Port & Schlüssel",
-        "description": "Seriellen Port auswählen und den AES-128-Entschlüsselungsschlüssel eingeben.",
-        "data": {
-          "com_port": "USB-Port",
-          "key_hex":  "Entschlüsselungsschlüssel (32 Hex-Zeichen)"
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Aktualisierungsintervall in Sekunden",
+                "data": {
+                    "smartmeter_aut_data_interval": "Update-Intervall [s]"
+                }
+            }
+        },
+        "error": {
+            "data_interval_empty": "Bitte eine Aktualisierungsrate zwischen 5 und 3600 Sekunden eingeben.",
+            "data_interval_wrong": "Aktualisierungsintervall muss zwischen 5 und 3600 Sekunden liegen."
         }
-      }
-    },
-    "error": {
-      "invalid_serial_port":    "Serieller Port ist kein gültiges Gerät oder konnte nicht geöffnet werden",
-      "cannot_open_serial_port":"Serieller Port kann nicht geöffnet werden – bitte prüfen und erneut versuchen"
-    },
-    "abort": {
-      "cannot_connect":     "Verbindung fehlgeschlagen – bitte seriellen Port und Verkabelung prüfen",
-      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]",
-      "no_serial_ports":    "Keine seriellen Ports gefunden. Ein gültiger M-BUS-zu-USB-Adapter wird benötigt."
     }
-  },
-  "options": {
-    "step": {
-      "init": {
-        "title": "Update-Intervall in Sekunden",
-        "data": {
-          "data_interval": "Update-Intervall [s]"
-        }
-      }
-    },
-    "error": {
-      "data_interval_empty": "Bitte einen Wert zwischen 5 und 3600 Sekunden eingeben.",
-      "data_interval_wrong": "Update-Intervall muss zwischen 5 und 3600 Sekunden liegen."
-    }
-  }
 }

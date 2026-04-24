@@ -1,6 +1,4 @@
-"""Sensor-Plattform für den IKB Smart Meter (Kaifa MA309)."""
-
-from __future__ import annotations
+"""Sensor platform for Smartmeter Austria (IKB / Kaifa MA309)."""
 import logging
 
 from homeassistant.components.sensor import SensorEntity
@@ -14,13 +12,13 @@ from .const import DOMAIN
 from .coordinator import SmartmeterDataCoordinator
 from .exceptions import SmartmeterException
 from .obisdata import ObisData, SUPPLIED_VALUES
-from .obisvalue import ObisValueBytes, ObisValueFloat
+from .obisvalue import ObisValueFloat, ObisValueBytes
 from .sensor_descriptions import DEFAULT_SENSOR, SENSOR_DESCRIPTIONS
 from .smartmeter_data import SmartMeterConfigEntry, SmartMeterData
 
 _LOGGER = logging.getLogger(__name__)
 
-
+PARALLEL_UPDATES = 1
 
 # Only expose sensor IDs that have a description entry
 _SENSOR_IDS = [sid for sid in SUPPLIED_VALUES if sid in SENSOR_DESCRIPTIONS]
@@ -54,14 +52,6 @@ class SmartmeterSensor(CoordinatorEntity, SensorEntity):
         device_number: str,
         sensor_id: str,
     ) -> None:
-        """Initialisiert den Sensor.
-
-        Args:
-            coordinator:   Datenquelle (aktualisiert periodisch)
-            device_info:   HA-Geräteinformationen (für Gerätekarte)
-            device_number: Seriennummer des Zählers (für unique_id)
-            sensor_id:     OBIS-Attributname, z. B. "VoltageL1"
-        """
         super().__init__(coordinator)
         self._attr_unique_id    = f"{DOMAIN}_{device_number}_{sensor_id}"
         self._attr_device_info  = device_info
@@ -71,24 +61,19 @@ class SmartmeterSensor(CoordinatorEntity, SensorEntity):
         self.my_coordinator     = coordinator
 
     @property
-    def native_value(self) -> float | str | None:
-        """Gibt den aktuellen Messwert zurück.
-
-        Bei fehlenden Daten (Coordinator noch nicht bereit) wird
-        ConfigEntryNotReady ausgelöst, damit HA die Entität als
-        „unavailable" markiert.
-        """
-        obisdata: ObisData | None = self.my_coordinator.data
+    def native_value(self):
+        """Return the sensor value."""
+        obisdata: ObisData = self.my_coordinator.data
         if obisdata is None:
-            raise ConfigEntryNotReady("Coordinator hat noch keine Daten.")
+            raise ConfigEntryNotReady
 
         try:
-            obis_value: ObisValueFloat | ObisValueBytes | None = getattr(
-                obisdata, self._sensor_id, None
+            obis_value: ObisValueFloat | ObisValueBytes = getattr(
+                obisdata, self._sensor_id
             )
             if obis_value is None:
                 _LOGGER.debug("obisdata.%s is None.", self._sensor_id)
-                raise ConfigEntryNotReady(f"Kein Wert für '{self._sensor_id}'.")
+                raise ConfigEntryNotReady()
 
             new_value = obis_value.value
             self._previous_value = new_value
@@ -99,10 +84,6 @@ class SmartmeterSensor(CoordinatorEntity, SensorEntity):
                 "native_value error for %s: %s", self._sensor_id, exc, exc_info=True
             )
             raise ConfigEntryNotReady() from exc
-
-        except ConfigEntryNotReady:
-            raise
-
         except Exception as exc:
             _LOGGER.warning(
                 "native_value generic error for %s: %s",

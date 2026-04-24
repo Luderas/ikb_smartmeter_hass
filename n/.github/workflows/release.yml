@@ -1,0 +1,35 @@
+name: "Release"
+
+on:
+  release:
+    types:
+      - "published"
+
+permissions: {}
+
+jobs:
+  release:
+    name: "Release"
+    runs-on: "ubuntu-latest"
+    permissions:
+      contents: write
+    steps:
+      - name: "Checkout repository"
+        uses: "actions/checkout@v4.1.1"
+
+      - name: "Update version in manifest.json"
+        shell: "bash"
+        run: |
+          yq -i -o json '.version="${{ github.event.release.tag_name }}"' \
+            "${{ github.workspace }}/custom_components/ikb_smartmeter_hass/manifest.json"
+
+      - name: "ZIP integration directory"
+        shell: "bash"
+        run: |
+          cd "${{ github.workspace }}/custom_components/ikb_smartmeter_hass"
+          zip ikb_smartmeter_hass.zip -r ./
+
+      - name: "Upload ZIP to release"
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ${{ github.workspace }}/custom_components/ikb_smartmeter_hass/ikb_smartmeter_hass.zip

@@ -1,4 +1,4 @@
-"""DataUpdateCoordinator für den Kaifa MA309 (IKB)."""
+"""The Smartmeter data coordinator."""
 from __future__ import annotations
 
 import asyncio
@@ -19,28 +19,12 @@ from .smartmeter import Smartmeter
 
 _LOGGER = logging.getLogger(__name__)
 
-# Wartezeit nach einem Fehler, bevor der nächste Update-Versuch stattfindet
-_RETRY_DELAY_TRANSIENT_S = 10   # bei Timeout / seriellen Fehlern
-_RETRY_DELAY_GENERIC_S   = 30   # bei unbekannten Fehlern
-
 
 class SmartmeterDataCoordinator(DataUpdateCoordinator[ObisData]):
-    """Ruft periodisch Messdaten vom Kaifa MA309 über den seriellen Adapter ab.
-
-    Fehlerbehandlung:
-    - Timeout / serielle Fehler → kurze Pause, dann UpdateFailed
-    - Unbekannte Fehler         → längere Pause, dann UpdateFailed
-    In beiden Fällen markiert HA die Entitäten als „unavailable", bis der
-    nächste erfolgreiche Update stattfindet.
-    """
+    """Fetches data from the Kaifa MA309 via serial."""
 
     def __init__(self, hass: HomeAssistant, adapter: Smartmeter) -> None:
-        """Initialisiert den Coordinator.
-
-        Args:
-            hass:    Home Assistant Instanz
-            adapter: Konfigurierter Smartmeter-Adapter (Port + Schlüssel)
-        """
+        """Initialize."""
         self.adapter: Smartmeter = adapter
 
         super().__init__(
@@ -51,39 +35,40 @@ class SmartmeterDataCoordinator(DataUpdateCoordinator[ObisData]):
         )
 
     async def _async_update_data(self) -> ObisData:
-        """Liest einen Messrahmen vom Zähler (wird vom Coordinator-Framework aufgerufen).
-
-        Returns:
-            ObisData mit den aktuellen Messwerten.
-
-        Raises:
-            UpdateFailed: Bei allen Fehlertypen (nach optionaler Pause).
-        """
+        """Update data over the USB device."""
         try:
-            obisdata = await self.hass.async_add_executor_job(self.adapter.read)
             self.last_update_success = True
+            obisdata = await self.hass.async_add_executor_job(self.adapter.read)
             return obisdata
 
         except SmartmeterTimeoutException as exc:
-            _LOGGER.warning("Smartmeter Timeout: %s", exc, exc_info=True)
+            self.logger.warning(
+                "smartmeter.read() timeout error. %s", exc, exc_info=True
+            )
             self.last_update_success = False
-            await asyncio.sleep(_RETRY_DELAY_TRANSIENT_S)
-            raise UpdateFailed("Timeout beim Lesen des Smartmeters.") from exc
+            await asyncio.sleep(10)
+            raise UpdateFailed() from exc
 
         except SmartmeterSerialException as exc:
-            _LOGGER.warning("Smartmeter serieller Fehler: %s", exc, exc_info=True)
+            self.logger.warning(
+                "smartmeter.read() serial exception. %s", exc, exc_info=True
+            )
             self.last_update_success = False
-            await asyncio.sleep(_RETRY_DELAY_TRANSIENT_S)
-            raise UpdateFailed("Serieller Fehler beim Lesen des Smartmeters.") from exc
+            await asyncio.sleep(10)
+            raise UpdateFailed() from exc
 
         except SmartmeterException as exc:
-            _LOGGER.warning("Smartmeter Fehler: %s", exc, exc_info=True)
+            self.logger.warning(
+                "smartmeter.read() smartmeter exception. %s", exc, exc_info=True
+            )
             self.last_update_success = False
-            await asyncio.sleep(_RETRY_DELAY_TRANSIENT_S)
-            raise UpdateFailed("Fehler beim Lesen des Smartmeters.") from exc
+            await asyncio.sleep(10)
+            raise UpdateFailed() from exc
 
         except Exception as exc:
-            _LOGGER.error("Unerwarteter Fehler beim Smartmeter-Update: %s", exc, exc_info=True)
+            self.logger.error(
+                "smartmeter.read() unexpected exception. %s", exc, exc_info=True
+            )
             self.last_update_success = False
-            await asyncio.sleep(_RETRY_DELAY_GENERIC_S)
-            raise UpdateFailed("Unerwarteter Fehler beim Smartmeter-Update.") from exc
+            await asyncio.sleep(30)
+            raise UpdateFailed() from exc
