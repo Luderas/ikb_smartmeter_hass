@@ -1,5 +1,4 @@
 """Konstanten für die IKB Smart Meter Integration (Kaifa MA309)."""
-
 from homeassistant.const import Platform
 
 # ---------------------------------------------------------------------------
@@ -37,7 +36,7 @@ PORT_TYPE_TTY   = "ttyUSB/ttyACM"  # /dev/ttyUSB0, /dev/ttyACM0, …
 # ---------------------------------------------------------------------------
 
 OPT_DATA_INTERVAL: str = "data_interval"  # Update-Intervall in Sekunden
-OPT_DATA_INTERVAL_DEFAULT: int = 30       # Standardwert
+OPT_DATA_INTERVAL_VALUE: int = 30       # Standardwert
 OPT_DATA_INTERVAL_MIN: int = 5            # Minimum
 OPT_DATA_INTERVAL_MAX: int = 3600         # Maximum
 
@@ -46,7 +45,7 @@ OPT_DATA_INTERVAL_MAX: int = 3600         # Maximum
 # Version & Startmeldung
 # ---------------------------------------------------------------------------
 
-VERSION = "0.0.1"
+VERSION = "0.0.2"
 
 STARTUP_MESSAGE = f"""
 -------------------------------------------------------------------

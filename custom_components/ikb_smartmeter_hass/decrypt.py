@@ -105,7 +105,7 @@ class Decrypt:
             raise SmartmeterException(f"AES-CTR-Entschlüsselung fehlgeschlagen: {exc}") from exc
 
     # ------------------------------------------------------------------
-    # Öffentliche Methoden
+    # Public helpers
     # ------------------------------------------------------------------
 
     def parse_all(self) -> None:
@@ -120,7 +120,7 @@ class Decrypt:
         self.obis_values = {}
 
         while i < total - 10:
-            # OBIS-Marker: OctetString-Tag (0x09) gefolgt von Länge 6 (0x06)
+            # OBIS marker: OctetString tag (0x09) + length 6 (0x06)
             if plain[i] == DataType.OctetString and plain[i + 1] == 0x06:
                 obis_code = bytes(plain[i + 2 : i + 8])
                 i += 8
@@ -132,13 +132,13 @@ class Decrypt:
                 # Dispatch je nach DLMS-Datentyp
                 if dtype == DataType.OctetString:
                     i = self._parse_octet_string(plain, i, obis_code)
-                elif dtype == DataType.LongUnsigned:       # uint16
+                elif dtype == DataType.LongUnsigned:       # uint16  0x12
                     i = self._parse_long_unsigned(plain, i, obis_code)
-                elif dtype == DataType.Long:               # int16
+                elif dtype == DataType.Long:               # int16   0x10
                     i = self._parse_long(plain, i, obis_code)
-                elif dtype == DataType.DoubleLongUnsigned: # uint32
+                elif dtype == DataType.DoubleLongUnsigned: # uint32  0x06
                     i = self._parse_double_long_unsigned(plain, i, obis_code)
-                elif dtype == DataType.DoubleLong:         # int32
+                elif dtype == DataType.DoubleLong:         # int32   0x05
                     i = self._parse_double_long(plain, i, obis_code)
                 else:
                     i += 1  # unbekannter Typ – überspringen
@@ -160,7 +160,7 @@ class Decrypt:
         return self.obis_values.get(obis_code)
 
     # ------------------------------------------------------------------
-    # Private Hilfsmethoden
+    # Private parsers
     # ------------------------------------------------------------------
 
     @staticmethod

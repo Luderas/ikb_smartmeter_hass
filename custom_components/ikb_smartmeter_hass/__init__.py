@@ -14,7 +14,7 @@ from .const import (
     CONF_KEY_HEX,
     DOMAIN,
     OPT_DATA_INTERVAL,
-    OPT_DATA_INTERVAL_DEFAULT,
+    OPT_DATA_INTERVAL_VALUE,
     PLATFORMS,
     STARTUP_MESSAGE,
 )
@@ -37,22 +37,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartMeterConfigEntry) -
     """
     if hass.data.get(DOMAIN) is None:
         hass.data.setdefault(DOMAIN, {})
-        _LOGGER.info(STARTUP_MESSAGE)
+        _LOGGER.debug(STARTUP_MESSAGE)
 
-    port    = entry.data[CONF_COM_PORT]
-    key_hex = entry.data[CONF_KEY_HEX]
+    port    = entry.data.get(CONF_COM_PORT)
+    key_hex = entry.data.get(CONF_KEY_HEX)
 
     # Update-Intervall aus den Options lesen (Fallback auf Default)
-    data_interval = entry.options.get(OPT_DATA_INTERVAL, OPT_DATA_INTERVAL_DEFAULT)
+    data_interval = entry.options.get(OPT_DATA_INTERVAL, OPT_DATA_INTERVAL_VALUE)
 
     # Erstverbindung – schlägt fehl → ConfigEntryNotReady → HA versucht es später erneut
     try:
         adapter  = Smartmeter(port, key_hex)
         obisdata = await hass.async_add_executor_job(adapter.read)
-    except Exception as exc:
+    except Exception as err:
         raise ConfigEntryNotReady(
             f"Verbindung zu Smartmeter auf Port '{port}' fehlgeschlagen."
-        ) from exc
+        ) from err
 
     # Gerätenummer als eindeutigen Identifier verwenden; Port als Fallback
     device_number = obisdata.DeviceNumber.value or port
@@ -67,6 +67,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartMeterConfigEntry) -
     # Coordinator aufbauen und ersten Refresh ausführen
     coordinator = SmartmeterDataCoordinator(hass, adapter)
     coordinator.update_interval = timedelta(seconds=data_interval)
+    coordinator.logger = _LOGGER
+    
     await coordinator.async_config_entry_first_refresh()
 
     # Laufzeitdaten im Entry speichern
@@ -80,7 +82,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SmartMeterConfigEntry) -
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     # Options-Listener: bei Änderung des Update-Intervalls Entry neu laden
-    entry.async_on_unload(entry.add_update_listener(_async_options_update_listener))
+    entry.async_on_unload(entry.add_update_listener(async_options_update_listener))
 
     return True
 
@@ -90,12 +92,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: SmartMeterConfigEntry) 
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
-async def _async_options_update_listener(
-    hass: HomeAssistant, entry: SmartMeterConfigEntry
+async def async_options_update_listener(
+    hass: HomeAssistant, config_entry: SmartMeterConfigEntry
 ) -> None:
     """Wird aufgerufen, wenn der Nutzer die Options (Update-Intervall) ändert.
 
     Lädt das Config-Entry neu, damit der neue Wert übernommen wird.
     """
     _LOGGER.debug("Options geändert – lade Entry '%s' neu.", entry.entry_id)
-    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.config_entries.async_reload(config_entry.entry_id)

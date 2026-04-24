@@ -1,5 +1,4 @@
 """DataUpdateCoordinator für den Kaifa MA309 (IKB)."""
-
 from __future__ import annotations
 
 import asyncio
@@ -9,7 +8,7 @@ import logging
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import DOMAIN, OPT_DATA_INTERVAL_DEFAULT
+from .const import DOMAIN, OPT_DATA_INTERVAL_VALUE
 from .exceptions import (
     SmartmeterException,
     SmartmeterSerialException,
@@ -48,7 +47,7 @@ class SmartmeterDataCoordinator(DataUpdateCoordinator[ObisData]):
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(seconds=OPT_DATA_INTERVAL_DEFAULT),
+            update_interval=timedelta(seconds=OPT_DATA_INTERVAL_VALUE),
         )
 
     async def _async_update_data(self) -> ObisData:

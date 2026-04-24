@@ -2,43 +2,43 @@
   "config": {
     "step": {
       "user": {
-        "title": "IKB Smart Meter – Port-Typ",
-        "description": "Bitte auswählen, wie der M-BUS-zu-USB-Adapter im System erscheint.",
+        "title": "Smartmeter – Port type",
+        "description": "Select how the M-BUS to USB adapter appears in the system.",
         "data": {
-          "port_type": "Port-Typ"
+          "port_type": "Port type"
         }
       },
       "port": {
-        "title": "IKB Smart Meter – Port & Schlüssel",
-        "description": "Seriellen Port auswählen und den AES-128-Entschlüsselungsschlüssel eingeben.",
+        "title": "Smartmeter – Port & Key",
+        "description": "Select the serial port and enter your AES-128 decryption key.",
         "data": {
-          "com_port": "USB-Port",
-          "key_hex":  "Entschlüsselungsschlüssel (32 Hex-Zeichen)"
+          "com_port": "USB port",
+          "key_hex":  "Decryption key (32 hex chars)"
         }
       }
     },
     "error": {
-      "invalid_serial_port":    "Serieller Port ist kein gültiges Gerät oder konnte nicht geöffnet werden",
-      "cannot_open_serial_port":"Serieller Port kann nicht geöffnet werden – bitte prüfen und erneut versuchen"
+      "invalid_serial_port": "Serial port is not a valid device or could not be opened",
+      "cannot_open_serial_port": "Cannot open serial port, please check and try again"
     },
     "abort": {
-      "cannot_connect":     "Verbindung fehlgeschlagen – bitte seriellen Port und Verkabelung prüfen",
+      "cannot_connect": "Unable to connect, please check serial port and electrical connection",
       "already_configured": "[%key:common::config_flow::abort::already_configured_device%]",
-      "no_serial_ports":    "Keine seriellen Ports gefunden. Ein gültiger M-BUS-zu-USB-Adapter wird benötigt."
+      "no_serial_ports": "No serial ports found. Need a valid M-BUS to USB device to communicate"
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Update-Intervall in Sekunden",
+        "title": "Set update rate in seconds",
         "data": {
-          "data_interval": "Update-Intervall [s]"
+          "smartmeter_aut_data_interval": "Update interval [s]"
         }
       }
     },
     "error": {
-      "data_interval_empty": "Bitte einen Wert zwischen 5 und 3600 Sekunden eingeben.",
-      "data_interval_wrong": "Update-Intervall muss zwischen 5 und 3600 Sekunden liegen."
+      "data_interval_empty": "Please enter an update rate between 5 and 3600 seconds.",
+      "data_interval_wrong": "Update rate must be between 5 and 3600 seconds."
     }
   }
 }

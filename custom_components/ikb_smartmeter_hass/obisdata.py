@@ -1,46 +1,32 @@
-"""OBIS-Datenhaltung für einen vollständigen Kaifa MA309 Messrahmen."""
-
-from __future__ import annotations
+"""Defines the OBIS data object for Kaifa MA309 (IKB)."""
 
 from .constants import PhysicalUnits
 from .decrypt import Decrypt
 from .obisvalue import ObisValueBytes, ObisValueFloat
 
-# ---------------------------------------------------------------------------
-# Liste aller vom Zähler gelieferten Werte
-# Reihenfolge entspricht der Darstellung in obisdata.py
-# ---------------------------------------------------------------------------
-
+# All value names that are read from the meter
 SUPPLIED_VALUES: list[str] = [
-    # Metadaten
     "Timestamp",
     "DeviceNumber",
     "LogicalDeviceNumber",
-    # Spannungen
     "VoltageL1",
     "VoltageL2",
     "VoltageL3",
-    # Ströme
     "CurrentL1",
     "CurrentL2",
     "CurrentL3",
-    # Wirkleistung gesamt
     "RealPowerIn",
     "RealPowerOut",
-    # Wirkleistung je Phase
     "RealPowerL1In",
     "RealPowerL1Out",
     "RealPowerL2In",
     "RealPowerL2Out",
     "RealPowerL3In",
     "RealPowerL3Out",
-    # Blindleistung
     "ReactivePowerPlus",
     "ReactivePowerMinus",
-    # Wirkenergie-Zähler
     "RealEnergyIn",
     "RealEnergyOut",
-    # Blindenergie-Zähler
     "ReactiveEnergyIn",
     "ReactiveEnergyOut",
     "ReactiveEnergyQ1",
@@ -51,33 +37,30 @@ SUPPLIED_VALUES: list[str] = [
 
 
 class ObisData:
-    """Hält alle OBIS-Messwerte eines einzelnen Kaifa MA309 Messrahmens.
+    """Holds all OBIS data for a Kaifa MA309 (IKB) reading."""
 
-    Felder werden aus dem Decrypt-Objekt befüllt. Nicht gelieferte Werte
-    behalten ihren Default (0 mit der jeweiligen Einheit).
-    """
+    # pylint: disable=too-many-instance-attributes
 
     def __init__(self, dec: Decrypt) -> None:
-        # -- Metadaten --------------------------------------------------------
-        self._timestamp:              ObisValueBytes = ObisValueBytes(b"")
-        self._device_number:          ObisValueBytes = ObisValueBytes(b"")
-        self._logical_device_number:  ObisValueBytes = ObisValueBytes(b"")
+        # Metadata
+        self._timestamp:             ObisValueBytes = ObisValueBytes(b"")
+        self._device_number:         ObisValueBytes = ObisValueBytes(b"")
+        self._logical_device_number: ObisValueBytes = ObisValueBytes(b"")
 
-        # -- Spannungen -------------------------------------------------------
+        # Voltages
         self._voltage_l1: ObisValueFloat = ObisValueFloat(0, PhysicalUnits.V)
         self._voltage_l2: ObisValueFloat = ObisValueFloat(0, PhysicalUnits.V)
         self._voltage_l3: ObisValueFloat = ObisValueFloat(0, PhysicalUnits.V)
 
-        # -- Ströme -----------------------------------------------------------
+        # Currents
         self._current_l1: ObisValueFloat = ObisValueFloat(0, PhysicalUnits.A)
         self._current_l2: ObisValueFloat = ObisValueFloat(0, PhysicalUnits.A)
         self._current_l3: ObisValueFloat = ObisValueFloat(0, PhysicalUnits.A)
 
-        # -- Wirkleistung gesamt ----------------------------------------------
+        # Power
         self._real_power_in:  ObisValueFloat = ObisValueFloat(0, PhysicalUnits.W)
         self._real_power_out: ObisValueFloat = ObisValueFloat(0, PhysicalUnits.W)
 
-        # -- Wirkleistung je Phase --------------------------------------------
         self._real_power_l1_in:  ObisValueFloat = ObisValueFloat(0, PhysicalUnits.W)
         self._real_power_l1_out: ObisValueFloat = ObisValueFloat(0, PhysicalUnits.W)
         self._real_power_l2_in:  ObisValueFloat = ObisValueFloat(0, PhysicalUnits.W)
@@ -85,15 +68,12 @@ class ObisData:
         self._real_power_l3_in:  ObisValueFloat = ObisValueFloat(0, PhysicalUnits.W)
         self._real_power_l3_out: ObisValueFloat = ObisValueFloat(0, PhysicalUnits.W)
 
-        # -- Blindleistung ----------------------------------------------------
         self._reactive_power_plus:  ObisValueFloat = ObisValueFloat(0, PhysicalUnits.var)
         self._reactive_power_minus: ObisValueFloat = ObisValueFloat(0, PhysicalUnits.var)
 
-        # -- Wirkenergie-Zähler -----------------------------------------------
-        self._real_energy_in:  ObisValueFloat = ObisValueFloat(0, PhysicalUnits.Wh)
-        self._real_energy_out: ObisValueFloat = ObisValueFloat(0, PhysicalUnits.Wh)
-
-        # -- Blindenergie-Zähler ----------------------------------------------
+        # Energy
+        self._real_energy_in:      ObisValueFloat = ObisValueFloat(0, PhysicalUnits.Wh)
+        self._real_energy_out:     ObisValueFloat = ObisValueFloat(0, PhysicalUnits.Wh)
         self._reactive_energy_in:  ObisValueFloat = ObisValueFloat(0, PhysicalUnits.varh)
         self._reactive_energy_out: ObisValueFloat = ObisValueFloat(0, PhysicalUnits.varh)
         self._reactive_energy_q1:  ObisValueFloat = ObisValueFloat(0, PhysicalUnits.varh)
@@ -101,20 +81,19 @@ class ObisData:
         self._reactive_energy_q3:  ObisValueFloat = ObisValueFloat(0, PhysicalUnits.varh)
         self._reactive_energy_q4:  ObisValueFloat = ObisValueFloat(0, PhysicalUnits.varh)
 
-        # -- Aus entschlüsseltem Frame befüllen -------------------------------
-        # Über den SUPPLIED_VALUES-Namen wird das gleichnamige Property gesetzt.
+        # Populate from decrypted data
         for key in SUPPLIED_VALUES:
             val = dec.get_obis_value(key)
             if val is not None:
                 setattr(self, key, val)
 
-    # =========================================================================
-    # Properties – Metadaten
-    # =========================================================================
+    # ------------------------------------------------------------------
+    # Properties – Metadata
+    # ------------------------------------------------------------------
 
     @property
     def Timestamp(self) -> ObisValueBytes:
-        """Zeitstempel des Zählers zum Zeitpunkt der Messung."""
+        """Meter timestamp."""
         return self._timestamp
 
     @Timestamp.setter
@@ -123,7 +102,7 @@ class ObisData:
 
     @property
     def DeviceNumber(self) -> ObisValueBytes:
-        """Seriennummer des Geräts (ASCII-String)."""
+        """The device (serial) number."""
         return self._device_number
 
     @DeviceNumber.setter
@@ -132,20 +111,19 @@ class ObisData:
 
     @property
     def LogicalDeviceNumber(self) -> ObisValueBytes:
-        """Logischer COSEM-Gerätename."""
+        """The logical device number (COSEM name)."""
         return self._logical_device_number
 
     @LogicalDeviceNumber.setter
     def LogicalDeviceNumber(self, v: ObisValueBytes) -> None:
         self._logical_device_number = v
 
-    # =========================================================================
-    # Properties – Spannungen
-    # =========================================================================
+    # ------------------------------------------------------------------
+    # Properties – Voltages
+    # ------------------------------------------------------------------
 
     @property
     def VoltageL1(self) -> ObisValueFloat:
-        """Spannung Phase L1 [V]."""
         return self._voltage_l1
 
     @VoltageL1.setter
@@ -154,7 +132,6 @@ class ObisData:
 
     @property
     def VoltageL2(self) -> ObisValueFloat:
-        """Spannung Phase L2 [V]."""
         return self._voltage_l2
 
     @VoltageL2.setter
@@ -163,20 +140,18 @@ class ObisData:
 
     @property
     def VoltageL3(self) -> ObisValueFloat:
-        """Spannung Phase L3 [V]."""
         return self._voltage_l3
 
     @VoltageL3.setter
     def VoltageL3(self, v: ObisValueFloat) -> None:
         self._voltage_l3 = v
 
-    # =========================================================================
-    # Properties – Ströme
-    # =========================================================================
+    # ------------------------------------------------------------------
+    # Properties – Currents
+    # ------------------------------------------------------------------
 
     @property
     def CurrentL1(self) -> ObisValueFloat:
-        """Strom Phase L1 [A]."""
         return self._current_l1
 
     @CurrentL1.setter
@@ -185,7 +160,6 @@ class ObisData:
 
     @property
     def CurrentL2(self) -> ObisValueFloat:
-        """Strom Phase L2 [A]."""
         return self._current_l2
 
     @CurrentL2.setter
@@ -194,20 +168,18 @@ class ObisData:
 
     @property
     def CurrentL3(self) -> ObisValueFloat:
-        """Strom Phase L3 [A]."""
         return self._current_l3
 
     @CurrentL3.setter
     def CurrentL3(self, v: ObisValueFloat) -> None:
         self._current_l3 = v
 
-    # =========================================================================
-    # Properties – Wirkleistung
-    # =========================================================================
+    # ------------------------------------------------------------------
+    # Properties – Power
+    # ------------------------------------------------------------------
 
     @property
     def RealPowerIn(self) -> ObisValueFloat:
-        """Bezogene Wirkleistung gesamt [W]."""
         return self._real_power_in
 
     @RealPowerIn.setter
@@ -216,7 +188,6 @@ class ObisData:
 
     @property
     def RealPowerOut(self) -> ObisValueFloat:
-        """Eingespeiste Wirkleistung gesamt [W]."""
         return self._real_power_out
 
     @RealPowerOut.setter
@@ -225,12 +196,11 @@ class ObisData:
 
     @property
     def RealPowerDelta(self) -> ObisValueFloat:
-        """Differenz Bezug − Einspeisung (berechnet, kein OBIS-Code) [W]."""
+        """Difference between taken and given power (calculated)."""
         return self._real_power_in - self._real_power_out
 
     @property
     def RealPowerL1In(self) -> ObisValueFloat:
-        """Bezogene Wirkleistung Phase L1 [W]."""
         return self._real_power_l1_in
 
     @RealPowerL1In.setter
@@ -239,7 +209,6 @@ class ObisData:
 
     @property
     def RealPowerL1Out(self) -> ObisValueFloat:
-        """Eingespeiste Wirkleistung Phase L1 [W]."""
         return self._real_power_l1_out
 
     @RealPowerL1Out.setter
@@ -248,7 +217,6 @@ class ObisData:
 
     @property
     def RealPowerL2In(self) -> ObisValueFloat:
-        """Bezogene Wirkleistung Phase L2 [W]."""
         return self._real_power_l2_in
 
     @RealPowerL2In.setter
@@ -257,7 +225,6 @@ class ObisData:
 
     @property
     def RealPowerL2Out(self) -> ObisValueFloat:
-        """Eingespeiste Wirkleistung Phase L2 [W]."""
         return self._real_power_l2_out
 
     @RealPowerL2Out.setter
@@ -266,7 +233,6 @@ class ObisData:
 
     @property
     def RealPowerL3In(self) -> ObisValueFloat:
-        """Bezogene Wirkleistung Phase L3 [W]."""
         return self._real_power_l3_in
 
     @RealPowerL3In.setter
@@ -275,7 +241,6 @@ class ObisData:
 
     @property
     def RealPowerL3Out(self) -> ObisValueFloat:
-        """Eingespeiste Wirkleistung Phase L3 [W]."""
         return self._real_power_l3_out
 
     @RealPowerL3Out.setter
@@ -284,7 +249,6 @@ class ObisData:
 
     @property
     def ReactivePowerPlus(self) -> ObisValueFloat:
-        """Induktive Blindleistung [var]."""
         return self._reactive_power_plus
 
     @ReactivePowerPlus.setter
@@ -293,20 +257,18 @@ class ObisData:
 
     @property
     def ReactivePowerMinus(self) -> ObisValueFloat:
-        """Kapazitive Blindleistung [var]."""
         return self._reactive_power_minus
 
     @ReactivePowerMinus.setter
     def ReactivePowerMinus(self, v: ObisValueFloat) -> None:
         self._reactive_power_minus = v
 
-    # =========================================================================
-    # Properties – Energie-Zähler
-    # =========================================================================
+    # ------------------------------------------------------------------
+    # Properties – Energy
+    # ------------------------------------------------------------------
 
     @property
     def RealEnergyIn(self) -> ObisValueFloat:
-        """Wirkenergie Bezug kumuliert [Wh]."""
         return self._real_energy_in
 
     @RealEnergyIn.setter
@@ -315,7 +277,6 @@ class ObisData:
 
     @property
     def RealEnergyOut(self) -> ObisValueFloat:
-        """Wirkenergie Einspeisung kumuliert [Wh]."""
         return self._real_energy_out
 
     @RealEnergyOut.setter
@@ -324,7 +285,6 @@ class ObisData:
 
     @property
     def ReactiveEnergyIn(self) -> ObisValueFloat:
-        """Blindenergie induktiv kumuliert [varh]."""
         return self._reactive_energy_in
 
     @ReactiveEnergyIn.setter
@@ -333,7 +293,6 @@ class ObisData:
 
     @property
     def ReactiveEnergyOut(self) -> ObisValueFloat:
-        """Blindenergie kapazitiv kumuliert [varh]."""
         return self._reactive_energy_out
 
     @ReactiveEnergyOut.setter
@@ -342,7 +301,6 @@ class ObisData:
 
     @property
     def ReactiveEnergyQ1(self) -> ObisValueFloat:
-        """Blindenergie Quadrant I [varh]."""
         return self._reactive_energy_q1
 
     @ReactiveEnergyQ1.setter
@@ -351,7 +309,6 @@ class ObisData:
 
     @property
     def ReactiveEnergyQ2(self) -> ObisValueFloat:
-        """Blindenergie Quadrant II [varh]."""
         return self._reactive_energy_q2
 
     @ReactiveEnergyQ2.setter
@@ -360,7 +317,6 @@ class ObisData:
 
     @property
     def ReactiveEnergyQ3(self) -> ObisValueFloat:
-        """Blindenergie Quadrant III [varh]."""
         return self._reactive_energy_q3
 
     @ReactiveEnergyQ3.setter
@@ -369,7 +325,6 @@ class ObisData:
 
     @property
     def ReactiveEnergyQ4(self) -> ObisValueFloat:
-        """Blindenergie Quadrant IV [varh]."""
         return self._reactive_energy_q4
 
     @ReactiveEnergyQ4.setter

@@ -43,7 +43,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Port-Scan-Hilfsfunktionen (laufen im Thread-Pool, nicht im Event-Loop)
+# Port-Scan-Hilfsfunktionen 
 # ---------------------------------------------------------------------------
 
 def _get_by_id_ports() -> list[str]:
@@ -147,14 +147,14 @@ class SmartmeterConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Second screen: select port + enter key."""
+        errors: dict[str, str] = {}
+
         # Scan ports (executor so we don't block the event loop)
         self._ports_list = await self.hass.async_add_executor_job(
             _get_ports_for_type, self._port_type
         )
         if not self._ports_list:
             return self.async_abort(reason="no_serial_ports")
-
-        errors: dict[str, str] = {}
 
         if user_input is not None:
             try:
